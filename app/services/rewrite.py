@@ -29,6 +29,13 @@ def start_rewrite(plan_id: int, db_path: str | None = None) -> dict:
         ).fetchone()
         if running:
             raise ServiceError("已有在途合并任务", 409)
+        misaligned = conn.execute(
+            "SELECT COUNT(*) AS c FROM plan_items i JOIN lake_files f ON f.id=i.file_id "
+            "WHERE i.plan_id=? AND f.status<>'已入计划'",
+            (plan_id,),
+        ).fetchone()["c"]
+        if misaligned:
+            raise ServiceError("退挂项与碎件状态未对齐，已拒合并", 409)
         items = conn.execute(
             "SELECT f.* FROM plan_items i JOIN lake_files f ON f.id=i.file_id "
             "WHERE i.plan_id=? AND f.status='已入计划'",

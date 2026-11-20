@@ -31,6 +31,16 @@ CREATE TABLE IF NOT EXISTS plan_items (
   UNIQUE(plan_id, file_id)
 );
 
+CREATE TABLE IF NOT EXISTS detach_vouchers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  plan_id INTEGER NOT NULL REFERENCES compact_plans(id),
+  file_id INTEGER NOT NULL REFERENCES lake_files(id),
+  size_bytes INTEGER NOT NULL,
+  operator TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(plan_id, file_id)
+);
+
 CREATE TABLE IF NOT EXISTS rewrite_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   plan_id INTEGER NOT NULL REFERENCES compact_plans(id),

@@ -5,6 +5,7 @@ import tornado.web
 from app.handlers.api_files import ApiFiles, ApiFileVoid
 from app.handlers.api_plans import (
     ApiPlanAttach,
+    ApiPlanDetach,
     ApiPlanDetail,
     ApiPlanPublish,
     ApiPlans,
@@ -41,6 +42,7 @@ def make_app() -> tornado.web.Application:
             (r"/api/plans/([0-9]+)", ApiPlanDetail),
             (r"/api/plans/([0-9]+)/attach", ApiPlanAttach),
             (r"/api/plans/([0-9]+)/publish", ApiPlanPublish),
+            (r"/api/plans/([0-9]+)/detach", ApiPlanDetach),
             (r"/api/rewrite/jobs", ApiRewriteJobs),
             (r"/api/rewrite/plans/([0-9]+)/start", ApiRewriteStart),
             (r"/api/reconcile/reports", ApiReconcileReports),

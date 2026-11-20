@@ -36,3 +36,16 @@ class ApiPlanPublish(BaseHandler):
     def post(self, plan_id: str):
         self.require_user()
         self.json({"item": plans_svc.publish_plan(int(plan_id))})
+
+
+class ApiPlanDetach(BaseHandler):
+    def post(self, plan_id: str):
+        user = self.require_user()
+        body = self.read_json()
+        try:
+            file_id = int(body.get("file_id"))
+        except (TypeError, ValueError) as exc:
+            raise ServiceError("file_id 无效") from exc
+        self.json(
+            plans_svc.detach_plan_item(int(plan_id), file_id, operator=user)
+        )

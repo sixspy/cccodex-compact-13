@@ -30,3 +30,7 @@ label { display:grid; gap:.3rem; font-size:.9rem; color:var(--muted); }
 input, select { width:100%; padding:.5rem .6rem; border-radius:8px; border:1px solid var(--line); background:#0f1522; color:var(--text); }
 h1,h2,h3 { margin:.2rem 0 .6rem; }
 .row { display:flex; gap:.6rem; flex-wrap:wrap; align-items:end; }
+.detail { margin-top:.8rem; }
+.grid { width:100%; border-collapse:collapse; font-size:.9rem; }
+.grid th, .grid td { text-align:left; padding:.4rem .5rem; border-bottom:1px solid var(--line); }
+.grid th { color:var(--muted); font-weight:600; }

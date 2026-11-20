@@ -1,5 +1,7 @@
-"""压实计划：创建、发布、挂文件。"""
+"""压实计划：创建、发布、挂文件、拆项退挂。"""
 from __future__ import annotations
+
+import sqlite3
 
 from app.db import get_db
 from app.services.errors import ServiceError
@@ -55,8 +57,9 @@ def attach_loose_files(plan_id: int, db_path: str | None = None) -> dict:
         if plan["status"] not in ("草稿", "已发布"):
             raise ServiceError("当前计划状态不可挂文件", 409)
         loose = conn.execute(
-            "SELECT id FROM lake_files WHERE table_name=? AND status='碎文件'",
-            (plan["target_table"],),
+            "SELECT id FROM lake_files WHERE table_name=? AND status='碎文件' "
+            "AND id NOT IN (SELECT file_id FROM detach_vouchers WHERE plan_id=?)",
+            (plan["target_table"], plan_id),
         ).fetchall()
         attached = 0
         for row in loose:
@@ -76,6 +79,67 @@ def attach_loose_files(plan_id: int, db_path: str | None = None) -> dict:
             )
             attached += 1
         return {"plan_id": plan_id, "attached": attached}
+
+
+def detach_plan_item(
+    plan_id: int,
+    file_id: int,
+    operator: str = "",
+    db_path: str | None = None,
+) -> dict:
+    """拆项退挂（全局单轨：独立凭证）。
+
+    一次事务写完：退挂凭证行 + 删除挂载项 + 回写碎文件态。
+    BEGIN IMMEDIATE 先取写锁，两名仓管同时拆同一项时只有一人成功。
+    """
+    with get_db(db_path) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        plan = conn.execute(
+            "SELECT * FROM compact_plans WHERE id=?", (plan_id,)
+        ).fetchone()
+        if not plan:
+            raise ServiceError("计划不存在", 404)
+        if plan["status"] not in ("草稿", "已发布"):
+            raise ServiceError("当前计划状态不可拆项退挂", 409)
+        item = conn.execute(
+            "SELECT i.id AS item_id, f.size_bytes FROM plan_items i "
+            "JOIN lake_files f ON f.id=i.file_id "
+            "WHERE i.plan_id=? AND i.file_id=?",
+            (plan_id, file_id),
+        ).fetchone()
+        if not item:
+            raise ServiceError("该项不在计划中或已退挂", 404)
+        try:
+            cur = conn.execute(
+                "INSERT INTO detach_vouchers(plan_id, file_id, size_bytes, operator) "
+                "VALUES (?,?,?,?)",
+                (plan_id, file_id, int(item["size_bytes"]), operator or ""),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise ServiceError("该项已退挂，请勿重复操作", 409) from exc
+        conn.execute(
+            "DELETE FROM plan_items WHERE plan_id=? AND file_id=?",
+            (plan_id, file_id),
+        )
+        conn.execute(
+            "UPDATE lake_files SET status='碎文件' WHERE id=? AND status='已入计划'",
+            (file_id,),
+        )
+        voucher = conn.execute(
+            "SELECT * FROM detach_vouchers WHERE id=?", (cur.lastrowid,)
+        ).fetchone()
+        plan_bytes = conn.execute(
+            "SELECT COALESCE(SUM(f.size_bytes),0) AS b FROM plan_items i "
+            "JOIN lake_files f ON f.id=i.file_id WHERE i.plan_id=?",
+            (plan_id,),
+        ).fetchone()["b"]
+        return {
+            "voucher": dict(voucher),
+            "plan_id": plan_id,
+            "file_id": file_id,
+            "plan_bytes": int(plan_bytes),
+            "file_status": "碎文件",
+        }
 
 
 def publish_plan(plan_id: int, db_path: str | None = None) -> dict:
@@ -114,4 +178,14 @@ def plan_detail(plan_id: int, db_path: str | None = None) -> dict:
             "WHERE i.plan_id=? ORDER BY f.id",
             (plan_id,),
         ).fetchall()
-        return {"plan": dict(plan), "items": [dict(x) for x in items]}
+        detaches = conn.execute(
+            "SELECT d.*, f.path, f.table_name, f.status AS file_status "
+            "FROM detach_vouchers d JOIN lake_files f ON f.id=d.file_id "
+            "WHERE d.plan_id=? ORDER BY d.id",
+            (plan_id,),
+        ).fetchall()
+        return {
+            "plan": dict(plan),
+            "items": [dict(x) for x in items],
+            "detaches": [dict(x) for x in detaches],
+        }
